@@ -34,4 +34,5 @@ data/*
 
 # Python virtual environment
 .venv/
-
+.pytest-tmp/
+.pytest-basetemp/
