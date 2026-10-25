@@ -2,78 +2,100 @@
 from typing import Any
 
 import numpy as np
-from numpy.typing import NDArray
-
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
 from src.embeddings.embedding_model import EmbeddingModel
 
 
 def semantic_search(
     query: str,
-    chunks: list[dict[str, Any]],
-    embeddings: NDArray[np.float32],
     embedding_model: EmbeddingModel,
+    qdrant_client: QdrantClient,
+    collection_name: str,
     top_k: int = 3,
+    document_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Return the most relevant chunks for a text query."""
+    """Retrieve the most relevant document chunks from Qdrant.
 
-    # Validate inputs
+    Args:
+        query: User's natural-language question.
+        embedding_model: Model used to embed the question.
+        qdrant_client: Initialized Qdrant client.
+        collection_name: Name of the collection containing document chunks.
+        top_k: Maximum number of chunks to retrieve.
+
+    Returns:
+        Ranked chunks containing their payload, point ID, and similarity.
+
+    Raises:
+        ValueError: If an input or query embedding is invalid.
+        QdrantClient errors: If the database query fails.
+    """
+    # 1. Validate inputs.
     if not query.strip():
         raise ValueError("Query must not be empty.")
 
-    if top_k < 1:
-        raise ValueError("top_k must be at least 1.")
-
-    if len(chunks) != len(embeddings):
-        raise ValueError("Each chunk must have one embedding.")
-
-    if not chunks:
-        return []
-
-    if any(
-        not isinstance(chunk.get("text"), str)
-        or not chunk["text"].strip()
-        for chunk in chunks
-    ):
-        raise ValueError("Each chunk must contain non-empty text.")
-
-    # Generate the query embedding
-    query_embedding = embedding_model.embed_text(query)
-
-    # Validate embedding dimensions and values
     if (
-        embeddings.ndim != 2
-        or embeddings.shape[1] != len(query_embedding)
+        isinstance(top_k, bool)
+        or type(top_k) is not int
+        or top_k < 1
     ):
-        raise ValueError("Embedding dimensions do not match.")
+        raise ValueError("top_k must be a positive integer")
 
-    if (
-        not np.isfinite(embeddings).all()
-        or not np.isfinite(query_embedding).all()
-    ):
-        raise ValueError("Embeddings must contain finite values.")
+    if not collection_name.strip():
+        raise ValueError("Collection name must not be empty.")
 
-    # Calculate cosine similarity
-    query_norm = np.linalg.norm(query_embedding)
-    chunk_norms = np.linalg.norm(embeddings, axis=1)
+    if document_id is not None and not document_id.strip():
+        raise ValueError("document_id must not be empty.")
 
-    if query_norm == 0 or np.any(chunk_norms == 0):
-        raise ValueError("Embeddings must not be zero vectors.")
-
-    scores = (embeddings @ query_embedding) / (
-        chunk_norms * query_norm
+    # 2. Generate the question embedding.
+    query_embedding = np.asarray(
+        embedding_model.embed_text(query),
+        dtype=np.float32,
     )
 
-    # Rank chunks by descending similarity
-    ranked_indices = np.argsort(
-        -scores,
-        kind="stable",
-    )[:top_k]
+    # 3. Validate the embedding.
+    if query_embedding.ndim != 1 or query_embedding.size == 0:
+        raise ValueError("Query embedding must be a non-empty 1D vector.")
 
-    # Return matching chunks with their similarity scores
-    return [
-        {
-            **chunks[int(index)],
-            "similarity": float(scores[index]),
-        }
-        for index in ranked_indices
-    ]
+    if not np.isfinite(query_embedding).all():
+        raise ValueError("Query embedding must contain finite values.")
+
+    if np.linalg.norm(query_embedding) == 0:
+        raise ValueError("Query embedding must not be a zero vector.")
+    query_filter = None
+
+    if document_id is not None:
+        query_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="document_id",
+                    match=models.MatchValue(value=document_id),
+                )
+            ]
+        )
+    # 4. Retrieve nearest chunks from Qdrant.
+    response = qdrant_client.query_points(
+        collection_name=collection_name,
+        query=query_embedding.tolist(),
+        limit=top_k,
+        query_filter=query_filter,
+        with_payload=True,
+        with_vectors=False,
+    )
+
+    # 5. Convert Qdrant results into application-friendly dictionaries.
+    results: list[dict[str, Any]] = []
+
+    for point in response.points:
+        payload = point.payload or {}
+
+        results.append(
+            {
+                **payload,
+                "id": str(point.id),
+                "similarity": float(point.score),
+            }
+        )
+
+    return results
