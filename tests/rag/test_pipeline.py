@@ -201,7 +201,7 @@ def test_answer_with_sources_returns_answer_and_citations(
 
     mock_generate_answer.return_value = "RAG retrieves relevant document context."
 
-    chunks = [
+    chunks: list[dict[str, Any]] = [
         {
             "text": "RAG retrieves relevant document context.",
             "filename": "rag-guide.pdf",

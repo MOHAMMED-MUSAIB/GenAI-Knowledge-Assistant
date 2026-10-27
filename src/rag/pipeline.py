@@ -30,8 +30,7 @@ def retrieve_context(
 ) -> list[dict[str, Any]]:
     """Retrieve relevant document chunks for a user's question."""
     if (
-        not isinstance(top_k, int)
-        or isinstance(top_k, bool)
+        isinstance(top_k, bool)
         or top_k < 1
     ):
         raise ValueError("top_k must be a positive integer.")
