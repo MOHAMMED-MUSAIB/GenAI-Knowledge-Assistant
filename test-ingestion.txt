@@ -1,0 +1,6 @@
+﻿Enterprise GenAI Knowledge Assistant Test
+
+The project uses Python and FastAPI for the backend.
+The embedding model is all-MiniLM-L6-v2.
+Qdrant stores document chunks as vectors.
+Semantic search retrieves relevant chunks to answer questions.

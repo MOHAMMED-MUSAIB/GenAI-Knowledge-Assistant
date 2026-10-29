@@ -16,6 +16,8 @@ from src.storage.qdrant_store import (
 )
 from src.rag.pipeline import answer_question
 from pydantic import BaseModel, Field
+from src.chunking.text_chunker import chunk_text
+from src.storage.qdrant_store import store_chunk
 UPLOAD_DIR = Path("data/uploads")
 
 app = FastAPI(title="Enterprise GenAI Knowledge Assistant")
@@ -98,7 +100,21 @@ async def upload_document(file: UploadFile = File(...)) -> dict[str, str | int]:
                 status_code=422,
                 detail="No text could be extracted from the uploaded document.",
             )
+        chunks = chunk_text(
+            extracted_text,
+            document_id=stored_filename,
+            filename=file.filename or "",
+        )
 
+        chunk_texts: list[str] = [str(chunk["text"]) for chunk in chunks]
+        embeddings = embedding_model.embed_texts(chunk_texts)
+
+        for chunk, embedding in zip(chunks, embeddings):
+            store_chunk(
+                client=qdrant_client,
+                chunk=chunk,
+                embedding=embedding,
+            )
         return {
             "filename": file.filename or "",
             "document_id": stored_filename,

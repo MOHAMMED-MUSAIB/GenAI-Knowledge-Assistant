@@ -106,7 +106,28 @@ def test_prepare_context_separates_multiple_chunks():
     assert "Second chunk." in result
     assert result.index("First chunk.") < result.index("Second chunk.")
 
+def test_prepare_context_assigns_source_ids_to_chunks() -> None:
+    chunks: list[dict[str, Any]] = [
+        {
+            "text": "Qdrant stores document chunks as vectors.",
+            "filename": "guide.txt",
+            "document_id": "doc-1",
+            "chunk_index": 0,
+        },
+        {
+            "text": "The solar system contains planets.",
+            "filename": "sample.txt",
+            "document_id": "doc-2",
+            "chunk_index": 0,
+        },
+    ]
 
+    result = prepare_context(chunks)
+
+    assert "[S1]" in result
+    assert "[S2]" in result
+    assert "Qdrant stores document chunks as vectors." in result
+    assert "The solar system contains planets." in result
 def test_prepare_context_skips_empty_text():
     chunks: list[dict[str, Any]] = [
         {"text": "   ", "filename": "empty.txt"},
@@ -199,7 +220,9 @@ def test_answer_with_sources_returns_answer_and_citations(
 ) -> None:
     from src.rag.pipeline import answer_with_sources
 
-    mock_generate_answer.return_value = "RAG retrieves relevant document context."
+    mock_generate_answer.return_value = (
+    "RAG retrieves relevant document context. [S1]"
+)
 
     chunks: list[dict[str, Any]] = [
         {
@@ -213,7 +236,7 @@ def test_answer_with_sources_returns_answer_and_citations(
     result = answer_with_sources("What is RAG?", chunks)
 
     assert result == {
-        "answer": "RAG retrieves relevant document context.",
+        "answer": "RAG retrieves relevant document context. [S1]",
         "sources": [
             {
                 "filename": "rag-guide.pdf",
@@ -256,9 +279,8 @@ def test_answer_question_orchestrates_rag_pipeline(
         }
     ]
     mock_generate_answer.return_value = (
-        "RAG retrieves context before generating an answer."
-    )
-
+        "Qdrant stores document chunks as vectors. [S1]"
+    )   
     result = answer_question(
         question="What is RAG?",
         embedding_model=Mock(),
@@ -266,7 +288,7 @@ def test_answer_question_orchestrates_rag_pipeline(
     )
 
     assert result == {
-        "answer": "RAG retrieves context before generating an answer.",
+        "answer": "Qdrant stores document chunks as vectors. [S1]",
         "sources": [
             {
                 "filename": "rag-guide.pdf",
@@ -278,3 +300,124 @@ def test_answer_question_orchestrates_rag_pipeline(
 
     mock_retrieve_context.assert_called_once()
     mock_generate_answer.assert_called_once()
+
+def test_extract_sources_skips_chunks_with_empty_text() -> None:
+    chunks: list[dict[str, Any]] = [
+        {
+            "text": "   ",
+            "filename": "empty.txt",
+            "document_id": "doc-empty",
+            "chunk_index": 0,
+        },
+        {
+            "text": "Qdrant stores document chunks as vectors.",
+            "filename": "guide.txt",
+            "document_id": "doc-guide",
+            "chunk_index": 1,
+        },
+    ]
+
+    sources = extract_sources(chunks)
+
+    assert sources == [
+        {
+            "filename": "guide.txt",
+            "document_id": "doc-guide",
+            "chunk_index": 1,
+        }
+    ]
+
+@patch("src.rag.pipeline.generate_answer")
+def test_answer_with_sources_preserves_retrieved_chunk_metadata(
+    mock_generate_answer: Mock,
+) -> None:
+    from src.rag.pipeline import answer_with_sources
+
+    mock_generate_answer.return_value = (
+    "Qdrant stores document chunks as vectors. [S1]"
+)
+
+    chunks: list[dict[str, Any]] = [
+        {
+            "text": "Qdrant stores document chunks as vectors.",
+            "filename": "guide.txt",
+            "document_id": "doc-1",
+            "chunk_index": 0,
+            "similarity": 0.31,
+            "id": "point-1",
+        },
+        {
+            "text": "Sample text about the solar system.",
+            "filename": "sample.txt",
+            "document_id": "doc-2",
+            "chunk_index": 0,
+            "similarity": 0.15,
+            "id": "point-2",
+        },
+    ]
+
+    result = answer_with_sources("What does Qdrant store?", chunks)
+
+    assert result["sources"] == [
+        {
+            "filename": "guide.txt",
+            "document_id": "doc-1",
+            "chunk_index": 0,
+        },
+
+    ]
+
+    prompt = mock_generate_answer.call_args.args[0]
+    assert "Qdrant stores document chunks as vectors." in prompt
+    assert "Sample text about the solar system." in prompt
+@patch("src.rag.pipeline.generate_answer")
+def test_answer_with_sources_returns_multiple_cited_sources(
+    mock_generate_answer: Mock,
+) -> None:
+    from src.rag.pipeline import answer_with_sources
+
+    mock_generate_answer.return_value = "Both facts are relevant. [S1] [S2]"
+
+    chunks: list[dict[str, Any]] = [
+        {
+            "text": "Qdrant stores vectors.",
+            "filename": "guide.txt",
+            "document_id": "doc-1",
+            "chunk_index": 0,
+        },
+        {
+            "text": "React builds user interfaces.",
+            "filename": "frontend.txt",
+            "document_id": "doc-2",
+            "chunk_index": 0,
+        },
+    ]
+
+    result = answer_with_sources("Explain the project.", chunks)
+
+    assert [source["filename"] for source in result["sources"]] == [
+        "guide.txt",
+        "frontend.txt",
+    ]
+
+
+@patch("src.rag.pipeline.generate_answer")
+def test_answer_with_sources_ignores_unknown_citation_ids(
+    mock_generate_answer: Mock,
+) -> None:
+    from src.rag.pipeline import answer_with_sources
+
+    mock_generate_answer.return_value = "Unsupported citation. [S99]"
+
+    chunks: list[dict[str, Any]] = [
+        {
+            "text": "Qdrant stores vectors.",
+            "filename": "guide.txt",
+            "document_id": "doc-1",
+            "chunk_index": 0,
+        }
+    ]
+
+    result = answer_with_sources("What does Qdrant store?", chunks)
+
+    assert result["sources"] == []

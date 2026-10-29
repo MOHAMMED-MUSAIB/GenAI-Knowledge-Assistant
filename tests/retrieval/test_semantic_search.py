@@ -265,3 +265,58 @@ def test_rejects_empty_collection_name() -> None:
             qdrant_client=FakeQdrantClient([]),  # type: ignore[arg-type]
             collection_name=" ",
         )
+
+def test_preserves_similarity_scores_for_all_retrieved_chunks() -> None:
+    embedding_model = FakeEmbeddingModel([1.0, 0.0])
+    qdrant_client = FakeQdrantClient(
+        [
+            FakePoint(
+                point_id=201,
+                payload={"text": "Qdrant stores document chunks as vectors."},
+                score=0.3096,
+            ),
+            FakePoint(
+                point_id=202,
+                payload={"text": "Unrelated sample text."},
+                score=0.1480,
+            ),
+        ]
+    )
+
+    results = semantic_search(
+        query="What does Qdrant store?",
+        embedding_model=embedding_model,  # type: ignore[arg-type]
+        qdrant_client=qdrant_client,  # type: ignore[arg-type]
+        collection_name="document_chunks",
+        top_k=2,
+    )
+
+    assert len(results) == 2
+    assert results[0]["similarity"] == pytest.approx(0.3096)
+    assert results[1]["similarity"] == pytest.approx(0.1480)
+def test_returns_results_in_descending_similarity_order() -> None:
+    embedding_model = FakeEmbeddingModel([1.0, 0.0])
+    qdrant_client = FakeQdrantClient(
+        [
+            FakePoint(
+                point_id=301,
+                payload={"text": "Lower score"},
+                score=0.30,
+            ),
+            FakePoint(
+                point_id=302,
+                payload={"text": "Higher score"},
+                score=0.80,
+            ),
+        ]
+    )
+
+    results = semantic_search(
+        query="Find relevant information.",
+        embedding_model=embedding_model,  # type: ignore[arg-type]
+        qdrant_client=qdrant_client,  # type: ignore[arg-type]
+        collection_name="document_chunks",
+        top_k=2,
+    )
+
+    assert results[0]["similarity"] >= results[1]["similarity"]

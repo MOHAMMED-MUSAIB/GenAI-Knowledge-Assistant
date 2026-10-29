@@ -88,14 +88,25 @@ def semantic_search(
     results: list[dict[str, Any]] = []
 
     for point in response.points:
+        similarity = float(point.score)
+        # print(f"DEBUG retrieval: score={similarity:.4f}")
+
+        # if similarity < 0.40:
+        #     continue
+
         payload = point.payload or {}
 
         results.append(
             {
                 **payload,
                 "id": str(point.id),
-                "similarity": float(point.score),
+                "similarity": similarity,
             }
         )
+
+        results.sort(
+        key=lambda result: result["similarity"],
+        reverse=True,
+    )
 
     return results
