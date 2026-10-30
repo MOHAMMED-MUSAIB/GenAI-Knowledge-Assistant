@@ -1,3 +1,4 @@
+import os
 from uuid import uuid5, NAMESPACE_URL
 
 import numpy as np
@@ -11,8 +12,11 @@ COLLECTION_NAME = "document_chunks"
 
 
 def get_qdrant_client() -> QdrantClient:
-    """Create a client connected to the local Qdrant server."""
-    return QdrantClient(url="http://localhost:6333")
+    """Create a client connected to the configured Qdrant server."""
+    return QdrantClient(
+        url=os.environ.get("QDRANT_URL", "http://localhost:6333"),
+        timeout=30,
+    )
 
 
 def create_collection_if_not_exists(
@@ -124,3 +128,25 @@ def get_chunk_by_id(
         return None
 
     return payload
+def delete_document_chunks(
+    client: QdrantClient,
+    document_id: str,
+) -> None:
+    """Delete all stored chunks belonging to a document."""
+    if not document_id.strip():
+        raise ValueError("document_id must not be empty.")
+
+    client.delete(
+        collection_name=COLLECTION_NAME,
+        points_selector=models.FilterSelector(
+            filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="document_id",
+                        match=models.MatchValue(value=document_id),
+                    )
+                ]
+            )
+        ),
+        wait=True,
+    )

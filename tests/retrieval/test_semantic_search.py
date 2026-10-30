@@ -192,6 +192,33 @@ def test_filters_search_by_document_id(
     assert query_filter.must[0].match.value == "doc-123"
 
 
+def test_filters_search_by_document_and_owner(
+    search_dependencies: tuple[
+        FakeEmbeddingModel,
+        FakeQdrantClient,
+    ],
+) -> None:
+    embedding_model, qdrant_client = search_dependencies
+
+    semantic_search(
+        query="What is the leave policy?",
+        embedding_model=embedding_model,  # type: ignore[arg-type]
+        qdrant_client=qdrant_client,  # type: ignore[arg-type]
+        collection_name="document_chunks",
+        document_id="doc-123",
+        owner_id="user-456",
+    )
+
+    assert qdrant_client.call_arguments is not None
+    query_filter = qdrant_client.call_arguments["query_filter"]
+
+    assert query_filter is not None
+    assert [(condition.key, condition.match.value) for condition in query_filter.must] == [
+        ("document_id", "doc-123"),
+        ("owner_id", "user-456"),
+    ]
+
+
 def test_returns_empty_list_when_no_points_match() -> None:
     embedding_model = FakeEmbeddingModel([1.0, 0.0])
     qdrant_client = FakeQdrantClient([])

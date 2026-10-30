@@ -6,6 +6,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
 from src.embeddings.embedding_model import EmbeddingModel
+from src.storage import qdrant_store
 from src.storage.qdrant_store import (
     COLLECTION_NAME,
     create_collection_if_not_exists,
@@ -13,6 +14,26 @@ from src.storage.qdrant_store import (
     get_qdrant_client,
     store_chunk,
 )
+
+
+def test_qdrant_client_uses_configured_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    fake_client = object()
+
+    def fake_qdrant_client(*, url: str, timeout: int) -> object:
+        captured["url"] = url
+        captured["timeout"] = timeout
+        return fake_client
+
+    monkeypatch.setenv("QDRANT_URL", "http://qdrant:6333")
+    monkeypatch.setattr(qdrant_store, "QdrantClient", fake_qdrant_client)
+
+    assert get_qdrant_client() is fake_client
+    assert captured["url"] == "http://qdrant:6333"
+    assert captured["timeout"] == 30
+
 
 def test_collection_configuration() -> None:
     """Verify the vector configuration matches the embedding model."""

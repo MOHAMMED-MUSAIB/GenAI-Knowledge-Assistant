@@ -14,6 +14,7 @@ def semantic_search(
     collection_name: str,
     top_k: int = 3,
     document_id: str | None = None,
+    owner_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Retrieve the most relevant document chunks from Qdrant.
 
@@ -23,6 +24,8 @@ def semantic_search(
         qdrant_client: Initialized Qdrant client.
         collection_name: Name of the collection containing document chunks.
         top_k: Maximum number of chunks to retrieve.
+        document_id: Optional filter for a specific document.
+        owner_id: Optional filter restricting results to one owner.
 
     Returns:
         Ranked chunks containing their payload, point ID, and similarity.
@@ -48,6 +51,9 @@ def semantic_search(
     if document_id is not None and not document_id.strip():
         raise ValueError("document_id must not be empty.")
 
+    if owner_id is not None and not owner_id.strip():
+        raise ValueError("owner_id must not be empty.")
+
     # 2. Generate the question embedding.
     query_embedding = np.asarray(
         embedding_model.embed_text(query),
@@ -63,17 +69,23 @@ def semantic_search(
 
     if np.linalg.norm(query_embedding) == 0:
         raise ValueError("Query embedding must not be a zero vector.")
-    query_filter = None
-
+    filters: list[models.Condition] = []
     if document_id is not None:
-        query_filter = models.Filter(
-            must=[
-                models.FieldCondition(
-                    key="document_id",
-                    match=models.MatchValue(value=document_id),
-                )
-            ]
+        filters.append(
+            models.FieldCondition(
+                key="document_id",
+                match=models.MatchValue(value=document_id),
+            )
         )
+    if owner_id is not None:
+        filters.append(
+            models.FieldCondition(
+                key="owner_id",
+                match=models.MatchValue(value=owner_id),
+            )
+        )
+
+    query_filter = models.Filter(must=filters) if filters else None
     # 4. Retrieve nearest chunks from Qdrant.
     response = qdrant_client.query_points(
         collection_name=collection_name,

@@ -61,6 +61,29 @@ def test_retrieve_context_calls_semantic_search(mock_search: Mock):
         qdrant_client=qdrant_client,
         collection_name=COLLECTION_NAME,
         top_k=2,
+        document_id=None,
+    )
+
+
+@patch("src.rag.pipeline.semantic_search")
+def test_retrieve_context_passes_document_id(mock_search: Mock):
+    embedding_model = Mock()
+    qdrant_client = Mock()
+
+    retrieve_context(
+        question="What is the leave policy?",
+        embedding_model=embedding_model,
+        qdrant_client=qdrant_client,
+        document_id="doc-1",
+    )
+
+    mock_search.assert_called_once_with(
+        query="What is the leave policy?",
+        embedding_model=embedding_model,
+        qdrant_client=qdrant_client,
+        collection_name=COLLECTION_NAME,
+        top_k=3,
+        document_id="doc-1",
     )
 
 
@@ -259,6 +282,31 @@ def test_answer_with_sources_handles_empty_chunks() -> None:
         "sources": [],
     }
 
+
+@patch("src.rag.pipeline.generate_answer")
+@patch("src.rag.pipeline.retrieve_context")
+def test_unsupported_question_without_retrieved_context_uses_fallback(
+    mock_retrieve_context: Mock,
+    mock_generate_answer: Mock,
+) -> None:
+    from src.rag.pipeline import answer_question
+
+    mock_retrieve_context.return_value = []
+
+    result = answer_question(
+        question="What does the document say about employee leave management?",
+        embedding_model=Mock(),
+        qdrant_client=Mock(),
+    )
+
+    assert result == {
+        "answer": (
+            "I could not find relevant information in the provided documents."
+        ),
+        "sources": [],
+    }
+    mock_generate_answer.assert_not_called()
+
 from unittest.mock import patch
 
 
@@ -285,8 +333,8 @@ def test_answer_question_orchestrates_rag_pipeline(
         question="What is RAG?",
         embedding_model=Mock(),
         qdrant_client=Mock(),
+        document_id="doc-123",
     )
-
     assert result == {
         "answer": "Qdrant stores document chunks as vectors. [S1]",
         "sources": [
@@ -298,7 +346,13 @@ def test_answer_question_orchestrates_rag_pipeline(
         ],
     }
 
-    mock_retrieve_context.assert_called_once()
+    mock_retrieve_context.assert_called_once_with(
+    question="What is RAG?",
+    embedding_model=mock_retrieve_context.call_args.kwargs["embedding_model"],
+    qdrant_client=mock_retrieve_context.call_args.kwargs["qdrant_client"],
+    top_k=3,
+    document_id="doc-123",
+    )
     mock_generate_answer.assert_called_once()
 
 def test_extract_sources_skips_chunks_with_empty_text() -> None:

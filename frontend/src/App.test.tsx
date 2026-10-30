@@ -1,16 +1,80 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import * as api from './services/api'
 
 vi.mock('./services/api', () => ({
+  clearAccessToken: vi.fn(),
   getDocuments: vi.fn().mockResolvedValue([]),
+  getAccessToken: vi.fn(),
+  login: vi.fn(),
+  register: vi.fn(),
+  setAccessToken: vi.fn(),
   uploadDocument: vi.fn(),
   askQuestion: vi.fn(),
 }))
 
 describe('App', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(api.getAccessToken).mockReturnValue('test-token')
+    vi.mocked(api.getDocuments).mockResolvedValue([])
+  })
+
+  it('signs in before showing the document library', async () => {
+    vi.mocked(api.getAccessToken).mockReturnValue(null)
+    vi.mocked(api.login).mockResolvedValue({
+      access_token: 'signed-in-token',
+      token_type: 'bearer',
+      username: 'test-user',
+    })
+
+    render(<App />)
+    fireEvent.change(screen.getByLabelText(/username/i), {
+      target: { value: 'test-user' },
+    })
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: 'a-secure-password-123' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^sign in$/i }))
+
+    expect(await screen.findByText(/upload a document/i)).toBeInTheDocument()
+    expect(api.login).toHaveBeenCalledWith(
+      'test-user',
+      'a-secure-password-123',
+    )
+    expect(api.setAccessToken).toHaveBeenCalledWith('signed-in-token')
+  })
+
+  it('creates an account and stores the access token', async () => {
+    vi.mocked(api.getAccessToken).mockReturnValue(null)
+    vi.mocked(api.register).mockResolvedValue({
+      access_token: 'new-account-token',
+      token_type: 'bearer',
+      username: 'new-user',
+    })
+
+    render(<App />)
+    fireEvent.click(
+      screen.getByRole('button', { name: /need an account\? register/i }),
+    )
+    fireEvent.change(screen.getByLabelText(/username/i), {
+      target: { value: 'new-user' },
+    })
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: 'a-secure-password-123' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^create account$/i }))
+
+    expect(await screen.findByText(/upload a document/i)).toBeInTheDocument()
+    expect(api.register).toHaveBeenCalledWith(
+      'new-user',
+      'a-secure-password-123',
+    )
+    expect(api.setAccessToken).toHaveBeenCalledWith('new-account-token')
+  })
+
   it('renders the document upload section', async () => {
     render(<App />)
 

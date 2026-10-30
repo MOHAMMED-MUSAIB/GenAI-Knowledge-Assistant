@@ -1,0 +1,23 @@
+[
+  {
+    "question": "Which embedding model does this project use?",
+    "category": "factual",
+    "relevant_document_id": "b864659d7c124d6bb4ff06245779c653.txt",
+    "expected_answer": "The project uses sentence-transformers/all-MiniLM-L6-v2.",
+    "expected_source": "b864659d7c124d6bb4ff06245779c653.txt"
+  },
+  {
+    "question": "What does the document say about employee leave management?",
+    "category": "unsupported",
+    "relevant_document_id": null,
+    "expected_answer": "I could not find relevant information in the provided documents.",
+    "expected_source": null
+  },
+  {
+    "question": "How many dimensions does the project embedding model produce?",
+    "category": "retrieval",
+    "relevant_document_id": "b864659d7c124d6bb4ff06245779c653.txt",
+    "expected_answer": "The embedding model produces 384-dimensional vectors.",
+    "expected_source": "b864659d7c124d6bb4ff06245779c653.txt"
+  }
+]

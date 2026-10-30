@@ -27,6 +27,8 @@ def retrieve_context(
     embedding_model: EmbeddingModel,
     qdrant_client: QdrantClient,
     top_k: int = 3,
+    document_id: str | None = None,
+    owner_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Retrieve relevant document chunks for a user's question."""
     if (
@@ -37,12 +39,24 @@ def retrieve_context(
 
     validated_question = validate_question(question)
 
+    if owner_id is None:
+        return semantic_search(
+            query=validated_question,
+            embedding_model=embedding_model,
+            qdrant_client=qdrant_client,
+            collection_name=COLLECTION_NAME,
+            top_k=top_k,
+            document_id=document_id,
+        )
+
     return semantic_search(
         query=validated_question,
         embedding_model=embedding_model,
         qdrant_client=qdrant_client,
         collection_name=COLLECTION_NAME,
         top_k=top_k,
+        document_id=document_id,
+        owner_id=owner_id,
     )
 
 
@@ -201,15 +215,28 @@ def answer_question(
     embedding_model: EmbeddingModel,
     qdrant_client: QdrantClient,
     top_k: int = 3,
+    document_id: str | None = None,
+    owner_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the complete RAG pipeline and return an answer with sources."""
     validated_question = validate_question(question)
 
-    chunks = retrieve_context(
-        question=validated_question,
-        embedding_model=embedding_model,
-        qdrant_client=qdrant_client,
-        top_k=top_k,
-    )
+    if owner_id is None:
+        chunks = retrieve_context(
+            question=validated_question,
+            embedding_model=embedding_model,
+            qdrant_client=qdrant_client,
+            top_k=top_k,
+            document_id=document_id,
+        )
+    else:
+        chunks = retrieve_context(
+            question=validated_question,
+            embedding_model=embedding_model,
+            qdrant_client=qdrant_client,
+            top_k=top_k,
+            document_id=document_id,
+            owner_id=owner_id,
+        )
 
     return answer_with_sources(validated_question, chunks)

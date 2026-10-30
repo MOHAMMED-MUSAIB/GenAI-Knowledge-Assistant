@@ -2,7 +2,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import {
   askQuestion,
+  clearAccessToken,
   getDocuments,
+  getAccessToken,
+  login,
+  register,
+  setAccessToken,
   uploadDocument,
   type AnswerResponse,
   type DocumentInfo,
@@ -10,6 +15,14 @@ import {
 import './App.css'
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    () => getAccessToken() !== null,
+  )
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [authError, setAuthError] = useState('')
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [documents, setDocuments] = useState<DocumentInfo[]>([])
   const [error, setError] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -22,6 +35,21 @@ function App() {
   const [questionError, setQuestionError] = useState('')
 
   useEffect(() => {
+    function handleAuthExpired() {
+      setIsAuthenticated(false)
+      setDocuments([])
+      setAnswer(null)
+    }
+
+    window.addEventListener('auth-expired', handleAuthExpired)
+    return () => window.removeEventListener('auth-expired', handleAuthExpired)
+  }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return
+    }
+
     async function loadDocuments() {
       try {
         const result = await getDocuments()
@@ -35,7 +63,96 @@ function App() {
     }
 
     void loadDocuments()
-  }, [])
+  }, [isAuthenticated])
+
+  async function handleAuthentication(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsAuthenticating(true)
+    setAuthError('')
+
+    try {
+      const response =
+        authMode === 'register'
+          ? await register(username, password)
+          : await login(username, password)
+      setAccessToken(response.access_token)
+      setIsAuthenticated(true)
+      setPassword('')
+    } catch (requestError) {
+      setAuthError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'Authentication failed.',
+      )
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
+
+  function handleLogout() {
+    clearAccessToken()
+    setIsAuthenticated(false)
+    setDocuments([])
+    setAnswer(null)
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <main>
+        <h1>Document Library</h1>
+        <section>
+          <h2>{authMode === 'register' ? 'Create account' : 'Sign in'}</h2>
+          <form onSubmit={handleAuthentication}>
+            <label htmlFor="username">Username</label>
+            <input
+              id="username"
+              type="text"
+              minLength={3}
+              maxLength={64}
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              required
+              disabled={isAuthenticating}
+            />
+            <label htmlFor="password">Password</label>
+            <input
+              id="password"
+              type="password"
+              minLength={12}
+              maxLength={128}
+              autoComplete={
+                authMode === 'register' ? 'new-password' : 'current-password'
+              }
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              disabled={isAuthenticating}
+            />
+            <button type="submit" disabled={isAuthenticating}>
+              {isAuthenticating
+                ? 'Please wait...'
+                : authMode === 'register'
+                  ? 'Create account'
+                  : 'Sign in'}
+            </button>
+          </form>
+          {authError && <p role="alert">{authError}</p>}
+          <button
+            type="button"
+            onClick={() => {
+              setAuthError('')
+              setAuthMode(authMode === 'register' ? 'login' : 'register')
+            }}
+          >
+            {authMode === 'register'
+              ? 'Already have an account? Sign in'
+              : 'Need an account? Register'}
+          </button>
+        </section>
+      </main>
+    )
+  }
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -112,6 +229,9 @@ function App() {
   return (
     <main>
       <h1>Document Library</h1>
+      <button type="button" onClick={handleLogout}>
+        Sign out
+      </button>
 
       {error && <p role="alert">{error}</p>}
 
